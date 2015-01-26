@@ -268,27 +268,36 @@ namespace HDS_EDIRelay.Models
 
             try
             {
-                using (new HDS_NetworkAuth(this._Dest_Username, this._Dest_ServerName, this._Dest_Password))
-                {
-                    string[] cachefiles = Directory.GetFiles(Path.Combine(_execution_path, @"Cache\EDI"), "*.*");
-
-                    foreach (string file in cachefiles)
-                    {
-                        string dstPath = @"\\" + this._Dest_Host + Path.Combine(this._Dest_Path, Path.GetFileName(file));
-                        File.Copy(file, dstPath, true);
-
-                        // delete local file
-                        File.Delete(Path.Combine(_execution_path, @"Cache\EDI\" + Path.GetFileName(file)));
-
-                        totalsent += 1;
-                    }
-
-                }
+                if (string.IsNullOrEmpty(this._Dest_Username))
+                    this.UploadDest_EDIFiles_concrete(out totalsent);
+                else
+                    using (new HDS_NetworkAuth(this._Dest_Username, this._Dest_ServerName, this._Dest_Password))
+                        this.UploadDest_EDIFiles_concrete(out totalsent);
             }
             catch (Exception ex)
             {
                 errstat = true;
                 errmsg = ex.Message;
+            }
+
+            return;
+        }
+
+        private void UploadDest_EDIFiles_concrete(out int totalsent)
+        {
+            totalsent = 0;
+
+            string[] cachefiles = Directory.GetFiles(Path.Combine(_execution_path, @"Cache\EDI"), "*.*");
+
+            foreach (string file in cachefiles)
+            {
+                string dstPath = @"\\" + this._Dest_Host + Path.Combine(this._Dest_Path, Path.GetFileName(file));
+                File.Copy(file, dstPath, true);
+
+                // delete local file
+                File.Delete(Path.Combine(_execution_path, @"Cache\EDI\" + Path.GetFileName(file)));
+
+                totalsent += 1;
             }
 
             return;
@@ -307,64 +316,11 @@ namespace HDS_EDIRelay.Models
                 if (Directory.Exists(Path.Combine(_execution_path, @"Cache\PO")) == false)
                     throw new Exception("PO Directory not found for PO files");
 
-                using (new HDS_NetworkAuth(this._Dest_Username, this._Dest_ServerName, this._Dest_Password))
-                {
-                    int iCounter = 0;
-
-                    string dstPOPath = @"\\" + this._Dest_Host + _Dest_PO_Path;
-                    string[] netfiles = Directory.GetFiles(dstPOPath, "*.*");
-
-                    char[] charSplit = { ',' };
-                    string[] arrExt = this._Dest_Extension.Split(charSplit);
-
-                    string datemask = DateTime.Now.ToString("dd_MM_yyyy");
-
-                    // 4 days back
-                    DateTime podatebound = DateTime.Today.AddDays(-4);
-
-                    foreach (string netfile in netfiles)
-                    {
-                        // check if po is already downloaded
-                        if (this.checkPO_Marked(out errstat, out errmsg, datemask, Path.GetFileName(netfile)) == false)
-                        {
-                            bool bCopyFile = false;
-
-                            // determine copy status
-                            if (string.IsNullOrEmpty(this._Dest_Extension))
-                            {
-                                FileInfo flInfo = new FileInfo(netfile);
-
-                                // check timestamp
-                                if (flInfo.CreationTime.Date >= podatebound.Date)
-                                    bCopyFile = true;
-                            }
-                            else
-                                foreach (string strExt in arrExt)
-                                    if (string.Equals(strExt, Path.GetExtension(netfile)))
-                                    {
-                                        FileInfo flInfo = new FileInfo(netfile);
-
-                                        // check timestamp
-                                        if (flInfo.CreationTime.Date >= podatebound.Date)
-                                            bCopyFile = true;
-                                    }
-
-                            // good for copy file
-                            if (bCopyFile)
-                            {
-                                string filecachedPO = Path.Combine(_execution_path, @"Cache\PO\" + Path.GetFileName(netfile));
-                                File.Copy(netfile, filecachedPO, true);
-
-                                // after local copy, do depot search
-                                if (this.checkPO_DepotNames(out errstat, out errmsg, filecachedPO))
-                                    iCounter += 1;
-                            }
-
-                            // mark po file as downloaded
-                            this.markPO_Downloaded(out errstat, out errmsg, datemask, Path.GetFileName(netfile));
-                        }
-                    }
-                }
+                if (string.IsNullOrEmpty(this._Dest_Username))
+                    this.FetchDest_POFiles_concrete(out errstat, out errmsg);
+                else
+                    using (new HDS_NetworkAuth(this._Dest_Username, this._Dest_ServerName, this._Dest_Password))
+                        this.FetchDest_POFiles_concrete(out errstat, out errmsg);
 
             }
             catch (Exception ex)
@@ -376,6 +332,70 @@ namespace HDS_EDIRelay.Models
             }
 
             return (true);
+        }
+
+        private void FetchDest_POFiles_concrete(out bool errstat, out string errmsg)
+        {
+            errstat = false;
+            errmsg = string.Empty;
+
+            int iCounter = 0;
+
+            string dstPOPath = @"\\" + this._Dest_Host + _Dest_PO_Path;
+            string[] netfiles = Directory.GetFiles(dstPOPath, "*.*");
+
+            char[] charSplit = { ',' };
+            string[] arrExt = this._Dest_Extension.Split(charSplit);
+
+            string datemask = DateTime.Now.ToString("dd_MM_yyyy");
+
+            // 4 days back
+            DateTime podatebound = DateTime.Today.AddDays(-4);
+
+            foreach (string netfile in netfiles)
+            {
+                // check if po is already downloaded
+                if (this.checkPO_Marked(out errstat, out errmsg, datemask, Path.GetFileName(netfile)) == false)
+                {
+                    bool bCopyFile = false;
+
+                    // determine copy status
+                    if (string.IsNullOrEmpty(this._Dest_Extension))
+                    {
+                        FileInfo flInfo = new FileInfo(netfile);
+
+                        // check timestamp
+                        if (flInfo.CreationTime.Date >= podatebound.Date)
+                            bCopyFile = true;
+                    }
+                    else
+                        foreach (string strExt in arrExt)
+                            if (string.Equals(strExt, Path.GetExtension(netfile)))
+                            {
+                                FileInfo flInfo = new FileInfo(netfile);
+
+                                // check timestamp
+                                if (flInfo.CreationTime.Date >= podatebound.Date)
+                                    bCopyFile = true;
+                            }
+
+                    // good for copy file
+                    if (bCopyFile)
+                    {
+                        string filecachedPO = Path.Combine(_execution_path, @"Cache\PO\" + Path.GetFileName(netfile));
+                        File.Copy(netfile, filecachedPO, true);
+
+                        // after local copy, do depot search
+                        if (this.checkPO_DepotNames(out errstat, out errmsg, filecachedPO))
+                            iCounter += 1;
+                    }
+
+                    // mark po file as downloaded
+                    this.markPO_Downloaded(out errstat, out errmsg, datemask, Path.GetFileName(netfile));
+                }
+            }
+
+            return;
         }
 
         private bool checkPO_Marked(out bool errstat, out string errmsg, string datemask, string filename)
@@ -417,9 +437,7 @@ namespace HDS_EDIRelay.Models
                     Directory.CreateDirectory(fqp_datemaskpath);
 
                 using (StreamWriter swrFile = File.CreateText(Path.Combine(fqp_datemaskpath, filename)))
-                {
                     swrFile.Close();
-                }
             }
             catch (Exception ex)
             {
